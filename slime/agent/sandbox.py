@@ -74,11 +74,14 @@ class Sandbox(Protocol):
 
 
 EXIT_TIME_BUDGET_EXCEEDED = -1
+EXIT_MARKER_INVALID = -3  # the marker holds no exit code: something in the sandbox wrote over it
 
 
 async def _await_done_marker(sb: Sandbox, done_file: str, *, user: str, time_budget_sec: int) -> int:
     """Poll a detached command's exit-code marker until it appears, returning the
-    exit code (or ``EXIT_TIME_BUDGET_EXCEEDED`` if the budget runs out first).
+    exit code (or ``EXIT_TIME_BUDGET_EXCEEDED`` if the budget runs out first, or
+    ``EXIT_MARKER_INVALID`` if the marker holds anything but an integer: the
+    agent can write the sandbox's /tmp, and its episode then ends there).
 
     Read the marker directly every 5s. Spawning a shell for each poll adds load
     and some providers terminate the whole sandbox when an exec times out.
@@ -91,8 +94,12 @@ async def _await_done_marker(sb: Sandbox, done_file: str, *, user: str, time_bud
             out = await sb.read_file(done_file, user=user)
         except FileNotFoundError:
             continue
-        if (out or "").strip():
-            return int(out.strip())
+        if text := (out or "").strip():
+            try:
+                return int(text)
+            except ValueError:
+                logger.warning("exit-code marker %s holds %r, not an exit code", done_file, text[:80])
+                return EXIT_MARKER_INVALID
     return EXIT_TIME_BUDGET_EXCEEDED
 
 

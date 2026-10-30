@@ -193,5 +193,15 @@ def test_completion_poll_propagates_a_stopped_sandbox(fast_marker_polls):
         asyncio.run(sandbox_mod._await_done_marker(Sandbox(), "/tmp/.run.done", user="agent", time_budget_sec=60))
 
 
+def test_completion_poll_reports_an_overwritten_marker(fast_marker_polls):
+    # the agent can write /tmp: a marker holding anything but an exit code ends its run, not the rollout
+    class Sandbox:
+        async def read_file(self, path, *, user):
+            return "done\n"
+
+    result = asyncio.run(sandbox_mod._await_done_marker(Sandbox(), "/tmp/.run.done", user="agent", time_budget_sec=60))
+    assert result == sandbox_mod.EXIT_MARKER_INVALID
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
