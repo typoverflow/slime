@@ -17,6 +17,7 @@ import copy
 import dataclasses
 import logging
 import math
+import os
 import time
 import uuid
 from collections.abc import Callable
@@ -570,7 +571,8 @@ async def call_sglang_generate(
     sglang_url = adapter.sglang_url
     rid = None
     headers = {"X-SMG-Routing-Key": session_id} if session_id and session_id != "default" else None
-    timeout = aiohttp.ClientTimeout(total=None, sock_read=900)
+    # SGLang answers only once the turn is generated: a long reply under load can take longer
+    timeout = aiohttp.ClientTimeout(total=None, sock_read=float(os.environ.get("SLIME_AGENT_SGLANG_READ_TIMEOUT", "900")))
     captured = Sample(tokens=list(prompt_ids))
     max_new_tokens = int(sp["max_new_tokens"])
     partial_rollout = getattr(adapter.rollout_args, "partial_rollout", False)
