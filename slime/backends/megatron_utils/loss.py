@@ -131,10 +131,9 @@ def get_responses(
         `[R, V]` (policy) or `[R, 1]` (value) and `tokens_chunk` is shape `[R]`
         (1D int64), both aligned to response tokens for one sample.
     """
-    assert logits.dtype == torch.float32, f"{logits.dtype}"
     assert len(logits.shape) == 3, f"{logits.shape}"
     assert logits.size(0) == 1, f"{logits.shape}"
-    logits = logits.squeeze(0)
+    logits = logits.squeeze(0).float()  # half precision with chunked log-probs (model._logits_dtype_kwargs)
 
     if apply_temperature and args.rollout_temperature != 1.0:
         logits = logits.div(args.rollout_temperature)
@@ -553,15 +552,16 @@ def get_log_probs_and_entropy(
     log-probabilities; entropy is always computed from the unmasked logits.
     """
     assert non_loss_data
-    assert logits.dtype == torch.float32, f"{logits.dtype}"
     assert len(logits.shape) == 3, f"{logits.shape}"
     assert logits.size(0) == 1, f"{logits.shape}"
     logits = logits.squeeze(0)
+    # half precision only with chunked log-probs, which upcast each chunk (model._logits_dtype_kwargs)
+    assert logits.dtype == torch.float32 or args.log_probs_chunk_size > 0, f"{logits.dtype}"
 
     # Apply rollout temperature scaling to logits to match rollout-time log-probs.
     rollout_temperature = getattr(args, "rollout_temperature", 1.0)
     if rollout_temperature != 1.0:
-        logits = logits / rollout_temperature
+        logits = logits.float() / rollout_temperature
     logits = logits.contiguous()
     T = logits.size(0)
     device = logits.device

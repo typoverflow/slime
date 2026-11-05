@@ -71,6 +71,19 @@ def _should_update_microbatch_pbar(model) -> bool:
     return mpu.is_pipeline_last_stage(ignore_virtual=True)
 
 
+def _logits_dtype_kwargs(args: Namespace) -> dict:
+    """Keep the logits in the model's half precision when the log-probs are computed in chunks.
+
+    Megatron's Float16Module otherwise upcasts the whole ``[T, V/TP]`` logits to fp32, and that copy and
+    its gradient are the largest training tensors at long contexts (a 110k-token micro-batch at TP2:
+    2 x 55 GB). The chunked log-probs upcast each chunk instead, which gives the same values and
+    gradients: the output layer computes in half precision either way.
+    """
+    if args.log_probs_chunk_size > 0 and (args.bf16 or args.fp16):
+        return {"fp32_output": False}
+    return {}
+
+
 def _wrap_forward_step_with_microbatch_pbar(forward_step_func, pbar):
     if pbar is None:
         return forward_step_func
@@ -454,6 +467,7 @@ def forward_only(
         }
         if batch["multimodal_train_inputs"] is not None:
             forward_kwargs.update(batch["multimodal_train_inputs"])
+        forward_kwargs.update(_logits_dtype_kwargs(args))
         output_tensor = model(**forward_kwargs)
 
         output_kwargs = {
@@ -659,6 +673,7 @@ def train_one_step(
 
             if args.enable_mtp_training:
                 forward_kwargs["mtp_kwargs"] = {"mtp_labels": batch["tokens"]}
+            forward_kwargs.update(_logits_dtype_kwargs(args))
 
             output_tensor = model(**forward_kwargs)
 

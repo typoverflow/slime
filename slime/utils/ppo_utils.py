@@ -518,7 +518,7 @@ def _calculate_log_probs_and_entropy_chunk(
     log_prob_keep_mask: torch.Tensor | None,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     log_prob, entropy = _VocabParallelLogProbEntropy.apply(
-        logits,
+        logits.float(),  # a half-precision chunk of the logits (megatron_utils.model._logits_dtype_kwargs)
         tokens,
         log_prob_keep_mask,
         tp_group,
