@@ -120,7 +120,10 @@ def qwen3_5_hf_tensor(name: str, reader: SafetensorReader, hf_config) -> torch.T
     expert_match = re.fullmatch(r"mlp\.experts\.linear_fc([12])(?:\.weight)?(\d+)?", rest)
     if expert_match:
         projection, expert_idx = expert_match.groups()
-        if is_mtp and expert_idx is not None:
+        suffix = "gate_up_proj" if projection == "1" else "down_proj"
+        fused = f"{hf_layer_prefix}.mlp.experts.{suffix}"
+        # per-expert tensors: the MTP layer's, and every layer's in a checkpoint megatron_to_hf wrote
+        if expert_idx is not None and (is_mtp or fused not in reader):
             prefix = f"{hf_layer_prefix}.mlp.experts.{expert_idx}"
             if projection == "1":
                 return torch.cat(
@@ -131,8 +134,7 @@ def qwen3_5_hf_tensor(name: str, reader: SafetensorReader, hf_config) -> torch.T
                     dim=0,
                 )
             return reader.get_tensor(f"{prefix}.down_proj.weight")
-        suffix = "gate_up_proj" if projection == "1" else "down_proj"
-        tensor = reader.get_tensor(f"{hf_layer_prefix}.mlp.experts.{suffix}")
+        tensor = reader.get_tensor(fused)
         return tensor if expert_idx is None else tensor[int(expert_idx)].contiguous()
 
     shared_mapping = {
